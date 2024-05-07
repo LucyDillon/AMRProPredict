@@ -102,7 +102,6 @@ rule run_c_program:
     output:
         paths=temp("static/files/decision_tree/{genome}_names.txt.paths.txt"),
         predictions=temp("static/files/decision_tree/{genome}_names.txt.predicitions.txt"),
-        predictions_cip=temp("static/files/decision_tree/{genome}_cip.txt.predicitions.txt"),
         predictions_ami=temp("static/files/decision_tree/{genome}_ami.txt.predicitions.txt"),
         predictions_amo=temp("static/files/decision_tree/{genome}_amo.txt.predicitions.txt"),
         predictions_amp=temp("static/files/decision_tree/{genome}_amp.txt.predicitions.txt"),
