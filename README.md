@@ -12,4 +12,6 @@ To pull the singularity image used in the CNN smk:
 singularity pull --arch amd64 library://lucyd/machinelearning/mlpackages:1
 ```
 
+The eggNOG databases are required to run these workflows (please look at .smk files for the directory names). We are in the process of integrating a 'fast' option to allow users to use the eggNOG output (*.emapper.annotations).
+
 
