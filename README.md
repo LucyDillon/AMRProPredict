@@ -2,6 +2,7 @@
 Command line workflow to predict AMR phenotype.
 
 ## WARNING! This work is still under development.
+Predictions ≠ facts!!!
 
 ## Quick Start
 ```bash
