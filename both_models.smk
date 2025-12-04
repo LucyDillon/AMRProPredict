@@ -1,303 +1,236 @@
-GENOMES, = glob_wildcards("static/files/{genome}.fna")
+from pathlib import Path
+
+GENOME = config.get("genome", "sample")
+DIAMOND_DB = config.get("diamond_db")
+EGGNOG_DB = config.get("eggnog_db")
+EGGNOG_DATA_DIR = config.get("eggnog_data_dir", "./")
+EGGNOG_2_ARFF = config.get("eggnog_2_arff")
+TOOL_DIR = config.get("tool_dir", "./")
+MODEL_FILES_DIR = config.get("model_files_dir", TOOL_DIR + "/model_files")
+EGGNOG_2_CNN = config.get("eggnog_2_cnn", "eggnog2cnnPredictions.py")
+GENEFAMILIES = config.get("gene_families", "genefamilies.txt")
+ANTIBIOTICS = [
+    "amikacin", "amoxicillin", "ampicillin", "aztreonam", "cefepime", "ceftriaxone",
+    "chloramphenicol", "ciprofloxacin", "clindamycin", "colistin", "doripenem",
+    "ertapenem", "erythromycin", "fosfomycin", "gentamicin", "imipenem", "levofloxacin",
+    "meropenem", "moxifloxacin", "nitrofurantoin", "tetracycline", "tigecycline", "tobramycin"
+]
 
 rule all:
     input:
-        expand("static/files/results/{genome}.tar.gz", genome=GENOMES)
+        f"{GENOME}_results.tar.gz"
 
-rule prodigal:
+rule preprocess:
     input:
-        "static/files/{genome}.fna"
+        fasta = f"{GENOME}.fna"
     output:
-        "static/files/BOTH/{genome}.faa"
-    singularity: "./ldillon_amrwebsite.sif"
+        faa = f"{GENOME}.faa"
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
-        '''
-        prodigal -i {input} -a {output} -f gff
-        '''
+        """
+        prodigal -i {input.fasta} -a {output.faa} -f gff
+        """
 
 rule diamond:
     input:
-        faa="static/files/BOTH/{genome}.faa",  # Mark as temporary
-        db="data/eggnog_proteins.dmnd"
+        faa = f"{GENOME}.faa",
+        db = DIAMOND_DB
     output:
-        "static/files/BOTH/{genome}_Diamond.faa"
-    singularity: "./ldillon_amrwebsite.sif"
+        diamond = f"{GENOME}_Diamond.tsv"
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
+    resources:
+        mem_mb = 8000
+    threads: 1
     shell:
-        '''
-        diamond blastp -d {input.db} -q {input.faa} --more-sensitive --threads 2 -e 0.001000 -o {output} --top 3 --query-cover 0 --subject-cover 0
-        '''
+        """
+        diamond blastp \
+            --db {input.db} \
+            --query {input.faa} \
+            --out {output.diamond} \
+            --outfmt 6 \
+            --threads {threads}
+        """
 
-rule Edit_diamond:
+rule edit_diamond:
     input:
-        "static/files/BOTH/{genome}_Diamond.faa"
+        f"{GENOME}_Diamond.tsv"
     output:
-        "static/files/BOTH/{genome}_DiamondReduced.faa"
-    run:
-        shell("""cat {input} | awk 'BEGIN{{prev = ""}};{{if ($1 != prev) {{ prev=$1; print $1"\t"$2"\t"$11"\t"$12 }} }}' > {output}""")
+        f"{GENOME}_DiamondReduced.tsv"
+    shell:
+        """
+        awk 'BEGIN{{prev = ""}} {{if ($1 != prev) {{ prev=$1; print $1"\\t"$2"\\t"$11"\\t"$12 }}}}' {input} > {output}
+        """
 
 rule eggnog:
     input:
-        faa="static/files/BOTH/{genome}_DiamondReduced.faa",
-        db="data/"
+        faa = f"{GENOME}_DiamondReduced.tsv"
     output:
-        "static/files/BOTH/{genome}.emapper.annotations"
+        f"{GENOME}.emapper.annotations"
     params:
-        prefix="{genome}"
-    singularity: "./ldillon_amrwebsite.sif"
+        prefix = GENOME,
+        data_dir = EGGNOG_DATA_DIR
+    resources:
+        mem_mb = 6000
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
         """
-        emapper.py --data_dir {input.db} --annotate_hits_table {input.faa}  --no_file_comments --override --output {params.prefix} --cpu 8;
-        mv {params.prefix}.emapper.annotations static/files/BOTH/
+        emapper.py --data_dir {params.data_dir} \
+                   --annotate_hits_table {input.faa} \
+                   --no_file_comments \
+                   --override \
+                   --output {params.prefix}
         """
-
-rule eggnog2cnn:
-    input:
-        eggnog_output="static/files/BOTH/{genome}.emapper.annotations",
-        cnn_ami="Training_models/amikacin_egg_model_K_fold_bin.h5",
-        cnn_amo="Training_models/amoxicillin_egg_model_K_fold_bin.h5",
-        cnn_amp="Training_models/ampicillin_egg_model_K_fold_bin.h5",
-        cnn_az="Training_models/aztreonam_egg_model_K_fold_bin.h5",
-        cnn_cefe="Training_models/cefepime_egg_model_K_fold_bin.h5",
-        cnn_ceft="Training_models/ceftriaxone_egg_model_K_fold_bin.h5",
-        cnn_chlo="Training_models/chloramphenicol_egg_model_K_fold_bin.h5",
-        cnn_cip="Training_models/ciprofloxacin_egg_model_K_fold_bin.h5",
-        cnn_clin="Training_models/clindamycin_egg_model_K_fold_bin.h5",
-        cnn_col="Training_models/colistin_egg_model_K_fold_bin.h5",
-        cnn_dor="Training_models/doripenem_egg_model_K_fold_bin.h5",
-        cnn_ert="Training_models/ertapenem_egg_model_K_fold_bin.h5",
-        cnn_eryt="Training_models/erythromycin_egg_model_K_fold_bin.h5",
-        cnn_fos="Training_models/fosfomycin_egg_model_K_fold_bin.h5",
-        cnn_gen="Training_models/gentamicin_egg_model_K_fold_bin.h5",
-        cnn_imi="Training_models/imipenem_egg_model_K_fold_bin.h5",
-        cnn_lev="Training_models/levofloxacin_egg_model_K_fold_bin.h5",
-        cnn_mer="Training_models/meropenem_egg_model_K_fold_bin.h5",
-        cnn_mox="Training_models/moxifloxacin_egg_model_K_fold_bin.h5",
-        cnn_nit="Training_models/nitrofurantoin_egg_model_K_fold_bin.h5",
-        cnn_tet="Training_models/tetracycline_egg_model_K_fold_bin.h5",
-        cnn_tig="Training_models/tigecycline_egg_model_K_fold_bin.h5",
-        cnn_tob="Training_models/tobramycin_egg_model_K_fold_bin.h5",
-    output:
-        ami="static/files/BOTH/CNN_predictions_ami_{genome}.txt",
-        amo="static/files/BOTH/CNN_predictions_amo_{genome}.txt",
-        amp="static/files/BOTH/CNN_predictions_amp_{genome}.txt",
-        az="static/files/BOTH/CNN_predictions_az_{genome}.txt",
-        cefe="static/files/BOTH/CNN_predictions_cefe_{genome}.txt",
-        ceft="static/files/BOTH/CNN_predictions_ceft_{genome}.txt",
-        chlo="static/files/BOTH/CNN_predictions_chlo_{genome}.txt",
-        cip="static/files/BOTH/CNN_predictions_cip_{genome}.txt",
-        clin="static/files/BOTH/CNN_predictions_clin_{genome}.txt",
-        col="static/files/BOTH/CNN_predictions_col_{genome}.txt",
-        dor="static/files/BOTH/CNN_predictions_dor_{genome}.txt",
-        ert="static/files/BOTH/CNN_predictions_ert_{genome}.txt",
-        eryt="static/files/BOTH/CNN_predictions_eryt_{genome}.txt",
-        fos="static/files/BOTH/CNN_predictions_fos_{genome}.txt",
-        gen="static/files/BOTH/CNN_predictions_gen_{genome}.txt",
-        imi="static/files/BOTH/CNN_predictions_imi_{genome}.txt",
-        lev="static/files/BOTH/CNN_predictions_lev_{genome}.txt",
-        mer="static/files/BOTH/CNN_predictions_mer_{genome}.txt",
-        mox="static/files/BOTH/CNN_predictions_mox_{genome}.txt",
-        nit="static/files/BOTH/CNN_predictions_nit_{genome}.txt",
-        tet="static/files/BOTH/CNN_predictions_tet_{genome}.txt",
-        tig="static/files/BOTH/CNN_predictions_tig_{genome}.txt",
-        tob="static/files/BOTH/CNN_predictions_tob_{genome}.txt",
-    singularity: "./lucyd_machinelearning.sif"
-    shell:
-        """
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_ami} -o {output.ami};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_amo} -o {output.amo};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_amp} -o {output.amp};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_az} -o {output.az};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_cefe} -o {output.cefe};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_ceft} -o {output.ceft};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_chlo} -o {output.chlo};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_cip} -o {output.cip};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_clin} -o {output.clin};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_col} -o {output.col};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_dor} -o {output.dor};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_ert} -o {output.ert};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_eryt} -o {output.eryt};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_fos} -o {output.fos};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_gen} -o {output.gen};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_imi} -o {output.imi};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_lev} -o {output.lev};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_mer} -o {output.mer};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_mox} -o {output.mox};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_nit} -o {output.nit};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_tet} -o {output.tet};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_tig} -o {output.tig};
-        python3 eggnog2cnnPredictions.py -file {input.eggnog_output} -model {input.cnn_tob} -o {output.tob}
-        """
-
-rule combine_files_CNN:
-    input:
-        predictions_ami="static/files/BOTH/CNN_predictions_ami_{genome}.txt",
-        predictions_amo="static/files/BOTH/CNN_predictions_amo_{genome}.txt",
-        predictions_amp="static/files/BOTH/CNN_predictions_amp_{genome}.txt",
-        predictions_az="static/files/BOTH/CNN_predictions_az_{genome}.txt",
-        predictions_cefe="static/files/BOTH/CNN_predictions_cefe_{genome}.txt",
-        predictions_ceft="static/files/BOTH/CNN_predictions_ceft_{genome}.txt",
-        predictions_chlo="static/files/BOTH/CNN_predictions_chlo_{genome}.txt",
-        predictions_cip="static/files/BOTH/CNN_predictions_cip_{genome}.txt",
-        predictions_clin="static/files/BOTH/CNN_predictions_clin_{genome}.txt",
-        predictions_col="static/files/BOTH/CNN_predictions_col_{genome}.txt",
-        predictions_dor="static/files/BOTH/CNN_predictions_dor_{genome}.txt",
-        predictions_ert="static/files/BOTH/CNN_predictions_ert_{genome}.txt",
-        predictions_eryt="static/files/BOTH/CNN_predictions_eryt_{genome}.txt",
-        predictions_fos="static/files/BOTH/CNN_predictions_fos_{genome}.txt",
-        predictions_gen="static/files/BOTH/CNN_predictions_gen_{genome}.txt",
-        predictions_imi="static/files/BOTH/CNN_predictions_imi_{genome}.txt",
-        predictions_lev="static/files/BOTH/CNN_predictions_lev_{genome}.txt",
-        predictions_mer="static/files/BOTH/CNN_predictions_mer_{genome}.txt",
-        predictions_mox="static/files/BOTH/CNN_predictions_mox_{genome}.txt",
-        predictions_nit="static/files/BOTH/CNN_predictions_nit_{genome}.txt",
-        predictions_tet="static/files/BOTH/CNN_predictions_tet_{genome}.txt",
-        predictions_tig="static/files/BOTH/CNN_predictions_tig_{genome}.txt",
-        predictions_tob="static/files/BOTH/CNN_predictions_tob_{genome}.txt",
-    output:
-        final="static/files/BOTH/{genome}_FINAL.txt_CNN_predicitions.txt"
-    run:
-        shell("""echo "Antibiotic predicted_pheno" > {output.final}; awk '{{print "Amikacin", $0}}' {input.predictions_ami} >> {output.final}; awk '{{print "Amoxicillin", $0}}' {input.predictions_amo} >> {output.final}; awk '{{print "Ampicillin", $0}}' {input.predictions_amp} >> {output.final}; awk '{{print "Aztreonam", $0}}' {input.predictions_az} >> {output.final}; awk '{{print "Cefepime", $0}}' {input.predictions_cefe} >> {output.final}; awk '{{print "Ceftriaxone", $0}}' {input.predictions_ceft} >> {output.final}; awk '{{print "Chloramphenicol", $0}}' {input.predictions_chlo} >> {output.final}; awk '{{print "Ciprofloxacin", $0}}' {input.predictions_cip} >> {output.final}; awk '{{print "Clindamycin", $0}}' {input.predictions_clin} >> {output.final}; awk '{{print "Colistin", $0}}' {input.predictions_col} >> {output.final}; awk '{{print "Doripenem", $0}}' {input.predictions_dor} >> {output.final}; awk '{{print "Ertapenem", $0}}' {input.predictions_ert} >> {output.final}; awk '{{print "Erythromcyin", $0}}' {input.predictions_eryt} >> {output.final}; awk '{{print "Fosfomycin", $0}}' {input.predictions_fos} >> {output.final}; awk '{{print "Gentamicin", $0}}' {input.predictions_gen} >> {output.final}; awk '{{print "Imipenem", $0}}' {input.predictions_imi} >> {output.final}; awk '{{print "Levofloxacin", $0}}' {input.predictions_lev} >> {output.final}; awk '{{print "Meropenem", $0}}' {input.predictions_mer} >> {output.final}; awk '{{print "Moxifloxacin", $0}}' {input.predictions_mox} >> {output.final}; awk '{{print "Nitrofurantoin", $0}}' {input.predictions_nit} >> {output.final}; awk '{{print "Tetracycline", $0}}' {input.predictions_tet} >> {output.final}; awk '{{print "Tigecycline", $0}}' {input.predictions_tig} >> {output.final}; awk '{{print "Tobramycin", $0}}' {input.predictions_tob} >> {output.final}""")
-
 
 rule eggnog_2_arff:
     input:
-        "static/files/BOTH/{genome}.emapper.annotations"
+        annotations = f"{GENOME}.emapper.annotations",
+        script = EGGNOG_2_ARFF
     output:
-        "static/files/BOTH/{genome}.arff"
-    singularity: "./ldillon_amrwebsite.sif"
+        f"{GENOME}.arff"
     shell:
         """
-        python eggnog_output_to_arff.py -file {input} -o {output} -c_attr_name phenotype -catagory1 Susceptible -catagory2 Resistant
+        python {input.script} -file {input.annotations} -o {output}
         """
 
 rule genome_names:
     input:
-        "static/files/{genome}.fna"
+        f"{GENOME}.fna"
     output:
-        temp("static/files/BOTH/{genome}_names.txt")
-    run:
-        shell("""ls {input} > {output}; echo >> {output}""")
-
-rule run_c_program:
-    input:
-        dot_ami="dot_files/amikacin_EGGNOG_NEW.arff.dot",
-        dot_amo="dot_files/amoxicillin_EGGNOG_NEW.arff.dot",
-        dot_amp="dot_files/ampicillin_EGGNOG_NEW.arff.dot",
-        dot_az="dot_files/aztreonam_EGGNOG_NEW.arff.dot",
-        dot_cip="dot_files/ciprofloxacin_EGGNOG_NEW.arff.dot",
-        dot_clin="dot_files/clindamycin_EGGNOG_NEW.arff.dot",
-        dot_col="dot_files/colistin_EGGNOG_NEW.arff.dot",
-        dot_dor="dot_files/doripenem_EGGNOG_NEW.arff.dot",
-        dot_ert="dot_files/ertapenem_EGGNOG_NEW.arff.dot",
-        dot_gen="dot_files/gentamicin_EGGNOG_NEW.arff.dot",
-        dot_mer="dot_files/meropenem_EGGNOG_NEW.arff.dot",
-        dot_nit="dot_files/nitrofurantoin_EGGNOG_NEW.arff.dot",
-        dot_tet="dot_files/tetracycline_EGGNOG_NEW.arff.dot",
-        dot_tig="dot_files/tigecycline_EGGNOG_NEW.arff.dot",
-        dot_tob="dot_files/tobramycin_EGGNOG_NEW.arff.dot",
-        genome_names="static/files/BOTH/{genome}_names.txt",
-        arff_file="static/files/BOTH/{genome}.arff",
-    output:
-        paths=temp("static/files/BOTH/{genome}_names.txt.paths.txt"),
-        predictions=temp("static/files/BOTH/{genome}_names.txt.predicitions.txt"),
-        predictions_ami=temp("static/files/BOTH/{genome}_ami.txt.DT_predicitions.txt"),
-        predictions_amo=temp("static/files/BOTH/{genome}_amo.txt.DT_predicitions.txt"),
-        predictions_amp=temp("static/files/BOTH/{genome}_amp.txt.DT_predicitions.txt"),
-        predictions_az=temp("static/files/BOTH/{genome}_az.txt.DT_predicitions.txt"),
-        predictions_cip=temp("static/files/BOTH/{genome}_cip.txt.DT_predicitions.txt"),
-        predictions_clin=temp("static/files/BOTH/{genome}_clin.txt.DT_predicitions.txt"),
-        predictions_col=temp("static/files/BOTH/{genome}_col.txt.DT_predicitions.txt"),
-        predictions_dor=temp("static/files/BOTH/{genome}_dor.txt.DT_predicitions.txt"),
-        predictions_ert=temp("static/files/BOTH/{genome}_ert.txt.DT_predicitions.txt"),
-        predictions_gen=temp("static/files/BOTH/{genome}_gen.txt.DT_predicitions.txt"),
-        predictions_mer=temp("static/files/BOTH/{genome}_mer.txt.DT_predicitions.txt"),
-        predictions_nit=temp("static/files/BOTH/{genome}_nit.txt.DT_predicitions.txt"),
-        predictions_tet=temp("static/files/BOTH/{genome}_tet.txt.DT_predicitions.txt"),
-        predictions_tig=temp("static/files/BOTH/{genome}_tig.txt.DT_predicitions.txt"),
-        predictions_tob=temp("static/files/BOTH/{genome}_tob.txt.DT_predicitions.txt"),
-    singularity: "./ldillon_amrwebsite.sif"
+        f"{GENOME}_names.txt"
     shell:
         """
-        my_apply_decision_tree {input.dot_ami} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_ami};
-        my_apply_decision_tree {input.dot_amo} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_amo};
-        my_apply_decision_tree {input.dot_amp} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_amp};
-        my_apply_decision_tree {input.dot_az} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_az};
-        my_apply_decision_tree {input.dot_cip} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_cip};
-        my_apply_decision_tree {input.dot_clin} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_clin};
-        my_apply_decision_tree {input.dot_col} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_col};
-        my_apply_decision_tree {input.dot_dor} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_dor};
-        my_apply_decision_tree {input.dot_ert} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_ert};
-        my_apply_decision_tree {input.dot_gen} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_gen};
-        my_apply_decision_tree {input.dot_mer} {input.arff_file} {input.genome_names};
-        tail -1  {output.predictions} > {output.predictions_mer};
-        my_apply_decision_tree {input.dot_nit} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_nit};
-        my_apply_decision_tree {input.dot_tet} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_tet};
-        my_apply_decision_tree {input.dot_tig} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_tig};
-        my_apply_decision_tree {input.dot_tob} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_tob}
+        ls {input} > {output}
+        echo >> {output}
         """
 
-
-rule combine_files_DT:
+rule run_decision_tree:
     input:
-        predictions_ami="static/files/BOTH/{genome}_ami.txt.DT_predicitions.txt",
-        predictions_amo="static/files/BOTH/{genome}_amo.txt.DT_predicitions.txt",
-        predictions_amp="static/files/BOTH/{genome}_amp.txt.DT_predicitions.txt",
-        predictions_az="static/files/BOTH/{genome}_az.txt.DT_predicitions.txt",
-        predictions_cip="static/files/BOTH/{genome}_cip.txt.DT_predicitions.txt",
-        predictions_clin="static/files/BOTH/{genome}_clin.txt.DT_predicitions.txt",
-        predictions_col="static/files/BOTH/{genome}_col.txt.DT_predicitions.txt",
-        predictions_dor="static/files/BOTH/{genome}_dor.txt.DT_predicitions.txt",
-        predictions_ert="static/files/BOTH/{genome}_ert.txt.DT_predicitions.txt",
-        predictions_gen="static/files/BOTH/{genome}_gen.txt.DT_predicitions.txt",
-        predictions_mer="static/files/BOTH/{genome}_mer.txt.DT_predicitions.txt",
-        predictions_nit="static/files/BOTH/{genome}_nit.txt.DT_predicitions.txt",
-        predictions_tet="static/files/BOTH/{genome}_tet.txt.DT_predicitions.txt",
-        predictions_tig="static/files/BOTH/{genome}_tig.txt.DT_predicitions.txt",
-        predictions_tob="static/files/BOTH/{genome}_tob.txt.DT_predicitions.txt"
+        arff_file = f"{GENOME}.arff",
+        genome_names = f"{GENOME}_names.txt",
+        dot_file = lambda wildcards: f"{MODEL_FILES_DIR}/{wildcards.ab}_EGGNOG_NEW.arff.dot"
     output:
-        final="static/files/BOTH/{genome}_FINAL.txt.DT_predicitions.txt",
-    run:
-        shell("""echo "Antibiotic   Genome_name Genome_number   Node_number Node_label" > {output.final}; awk '{{print "Amikacin", $0}}' {input.predictions_ami} >> {output.final}; awk '{{print "Amoxicillin", $0}}' {input.predictions_amo} >> {output.final}; awk '{{print "Ampicillin", $0}}' {input.predictions_amp} >> {output.final}; awk '{{print "Aztreonam", $0}}' {input.predictions_az} >> {output.final}; awk '{{print "Ciprofloxacin", $0}}' {input.predictions_cip} >> {output.final}; awk '{{print "Clindamycin", $0}}' {input.predictions_clin} >> {output.final}; awk '{{print "Colistin", $0}}' {input.predictions_col} >> {output.final}; awk '{{print "Doripenem", $0}}' {input.predictions_dor} >> {output.final}; awk '{{print "Ertapenem", $0}}' {input.predictions_ert} >> {output.final}; awk '{{print "Gentamicin", $0}}' {input.predictions_gen} >> {output.final}; awk '{{print "Meropenem", $0}}' {input.predictions_mer} >> {output.final}; awk '{{print "Nitrofurantoin", $0}}' {input.predictions_nit} >> {output.final}; awk '{{print "Tetracycline", $0}}' {input.predictions_tet} >> {output.final}; awk '{{print "Tigecycline", $0}}' {input.predictions_tig} >> {output.final}; awk '{{print "Tobramycin", $0}}' {input.predictions_tob} >> {output.final}""")
-
-rule zip_files:
-    input:
-        "static/files/BOTH/{genome}.faa",
-        "static/files/BOTH/{genome}_Diamond.faa",
-        "static/files/BOTH/{genome}_DiamondReduced.faa",
-        "static/files/BOTH/{genome}.emapper.annotations",
-        "static/files/BOTH/{genome}.arff",
-        "static/files/BOTH/{genome}_FINAL.txt_CNN_predicitions.txt",
-        "static/files/BOTH/{genome}_FINAL.txt.DT_predicitions.txt",
+        predictions = f"{GENOME}_{{ab}}.predictions.txt"
+    resources:
+        mem_mb = 4000
     params:
-        path="static/files/BOTH"
-    output:
-        "static/files/{genome}.tar.gz"
+        ab = lambda wildcards: wildcards.ab
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
         """
-        tar -czvf {output} {input};
-        rm -r {params.path}
+        set -x
+        echo "Starting decision tree analysis for {params.ab}..."
+        echo "Dot file location: {input.dot_file}"
+
+        # Increase stack size for C programs
+        ulimit -s unlimited 2>/dev/null || ulimit -s 65536
+
+        # Check if dot file exists
+        if [ ! -f {input.dot_file} ]; then
+            echo "ERROR: Dot file not found: {input.dot_file}" >&2
+            exit 1
+        fi
+
+        # Copy to local file
+        cp {input.dot_file} ./model.dot
+
+        # Normalize line endings
+        sed -i 's/\r$//' ./model.dot 2>/dev/null || true
+
+        echo "Running apply_decision_tree..."
+        apply_decision_tree ./model.dot {input.arff_file} {input.genome_names}
+        exit_code=$?
+
+        echo "apply_decision_tree exit code: $exit_code"
+
+        # Handle output
+        if [ -f model.dot.predictions.txt ]; then
+            mv model.dot.predictions.txt {output.predictions}
+        elif [ -f {input.genome_names}.predictions.txt ]; then
+            mv {input.genome_names}.predictions.txt {output.predictions}
+        else
+            echo "ERROR: Could not find predictions output file" >&2
+            touch {output.predictions}
+            exit 1
+        fi
+
+        rm -f ./model.dot
+        exit $exit_code
         """
 
-rule send_results:
+rule make_signature:
     input:
-        file="static/files/{genome}.tar.gz"
+        fasta = f"{GENOME}.fna"
     output:
-        result="static/files/results/{genome}.tar.gz"
+        sig = f"{GENOME}.sig"
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
         """
-        mv {input.file} {output.result}
+        sourmash sketch dna -p k=31 {input.fasta} -o {output.sig}
+        """
+
+rule sourmash_search:
+    input:
+        sig = f"{GENOME}.sig"
+    output:
+        expand(f"{GENOME}_{{ab}}.sm.txt", ab=ANTIBIOTICS)
+    params:
+        db_dir = config.get("original_model_files_dir", MODEL_FILES_DIR),
+        antibiotics = ANTIBIOTICS
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
+    shell:
+        r"""
+        for ab in {params.antibiotics}; do
+            db="{params.db_dir}/${{ab}}_training.sbt.zip"
+            out="{GENOME}_${{ab}}.sm.txt"
+            echo "Running sourmash search for $ab using $db"
+
+            if [ -f "$db" ]; then
+                sourmash search {input.sig} "$db" --threshold 0.0 > "$out" 2>&1 || \
+                echo "Search failed" > "$out"
+            else
+                echo "Database not found: $db" > "$out"
+            fi
+        done
+        """
+
+rule eggnog2cnn:
+    input:
+        eggnog_output = f"{GENOME}.emapper.annotations",
+        script = EGGNOG_2_CNN,
+        file = GENEFAMILIES
+    output:
+        expand(f"CNN_predictions_{{ab}}_{GENOME}.txt", ab=ANTIBIOTICS)
+    params:
+        db_dir = config.get("original_model_files_dir", MODEL_FILES_DIR),
+        antibiotics = ANTIBIOTICS
+    singularity: 
+        "/home/lucydillon.linux/lucyd_machinelearning_mlpackages.sif"
+    shell:
+        r"""
+        for ab in {params.antibiotics}; do
+            db="{params.db_dir}/${{ab}}_egg_model_K_fold_bin.h5"
+            out="CNN_predictions_${{ab}}_{GENOME}.txt"
+            echo "Running eggnog2cnn for $ab using $db"
+            python3 {input.script} -file {input.eggnog_output} -m "$db" -o "$out" || echo "Failed: $ab" >&2
+        done
+        """
+
+rule package_results:
+    input:
+        predictions = expand(f"{GENOME}_{{ab}}.predictions.txt", ab=ANTIBIOTICS),
+        cnn = expand(f"CNN_predictions_{{ab}}_{GENOME}.txt", ab=ANTIBIOTICS),
+        sourmash = expand(f"{GENOME}_{{ab}}.sm.txt", ab=ANTIBIOTICS),
+        eggnog = f"{GENOME}.emapper.annotations"
+    output:
+        archive = f"{GENOME}_results.tar.gz"
+    shell:
+        """
+        tar -czf {output.archive} {input}
+        echo "Results packaged in: {output.archive}"
         """
