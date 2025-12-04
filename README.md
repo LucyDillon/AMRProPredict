@@ -44,7 +44,7 @@ pip install pyyaml
 ```
 conda install -c bioconda -c conda-forge snakemake
 ```
-- Install Singularity
+- Install Singularity \
 This is a bit more complicated depending on if you have Windows/linux/Mac. \
 You will most likely need a VM to run Singularity on a MAC :( 
 
