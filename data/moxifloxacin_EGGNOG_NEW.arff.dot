@@ -1,0 +1,7 @@
+digraph J48Tree {
+N0 [label="GeneFamily-28H6P" ]
+N0->N1 [label="<= 0"]
+N1 [label="Susceptible (4.0)" shape=box style=filled ]
+N0->N2 [label="> 0"]
+N2 [label="Resistant (10.0)" shape=box style=filled ]
+}
