@@ -6,14 +6,6 @@ Command line workflow to predict AMR phenotype.
 ## Quick Start
 ```bash
 # Basic usage
-python process.py \
-    --input your_genome.fasta \
-    --output results.tar.gz \
-    --model decision_tree \
-    --cores 4 \
-    --tool-dir /path/to/this/directory
-
-# Or use the wrapper
 ./run_analysis.sh --input genome.fasta --output results.tar.gz --model both_models
 
 # If you are using a VM on a Mac and this is causing writing permission errors, try:
