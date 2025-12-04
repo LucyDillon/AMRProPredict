@@ -23,6 +23,21 @@ python process.py \
 - `both_models` - Run both for comprehensive analysis
 
 
+## Edit paths:
+You will need to add the respective paths and names of the singularity containers in the 'process.py' file:
+```
+container_sources = {
+        'container': tool_path / 'amrmlpipeline_DT_arm64.sif', 
+        'ml_container': tool_path / 'amrmlpipeline_CNN.sif'
+    }
+    
+    # Also check in parent directory
+    if not container_sources['container'].exists():
+        container_sources['container'] = Path('/__YOUR__PATH___/amrmlpipeline_DT_arm64.sif')
+    if not container_sources['ml_container'].exists():
+        container_sources['ml_container'] = Path('/__YOUR__PATH___/amrmlpipeline_CNN.sif')
+```
+
 ## Downloads and singularity 
 
 Singularity definition files are in the repo for users to build (note: if you are using a Mac, you will need a VM for Singularity).
