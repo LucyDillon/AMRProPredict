@@ -1,0 +1,11 @@
+digraph J48Tree {
+N0 [label="GeneFamily-COG0030" ]
+N0->N1 [label="<= 1"]
+N1 [label="Susceptible (268.0)" shape=box style=filled ]
+N0->N2 [label="> 1"]
+N2 [label="GeneFamily-2EDSD" ]
+N2->N3 [label="<= 1"]
+N3 [label="Resistant (11.0/1.0)" shape=box style=filled ]
+N2->N4 [label="> 1"]
+N4 [label="Susceptible (4.0)" shape=box style=filled ]
+}
