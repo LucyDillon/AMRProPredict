@@ -43,10 +43,10 @@ container_sources = {
 Singularity definition files are in the repo for users to build (note: if you are using a Mac, you will need a VM for Singularity).
 
 Due to large file sizes of the Sourmash DBs, please download the files from the following link on the Open Science Framework:
-https://osf.io/qv3fs/overview?view_only=181294b8e47e4fd780e3b292158c8b43\
+https://osf.io/qv3fs/overview?view_only=181294b8e47e4fd780e3b292158c8b43 \
 Put these sourmash files into the same folder as the model files "data".
 
-Download eggNOG DBs from: http://eggnog5.embl.de/download/emapperdb-5.0.2/\
+Download eggNOG DBs from: http://eggnog5.embl.de/download/emapperdb-5.0.2/ \
 Put these files inside the AMRcast directory.
 
 ## Extra
