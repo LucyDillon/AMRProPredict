@@ -34,6 +34,19 @@ container_sources = {
 ```
 
 ## Downloads and singularity 
+### Requirements:
+
+- Install Yaml
+```
+pip install pyyaml
+```
+- Install Snakemake
+```
+conda install -c bioconda -c conda-forge snakemake
+```
+- Install Singularity
+This is a bit more complicated depending on if you have Windows/linux/Mac.
+You will most likely need a VM to run Singularity on a MAC :( 
 
 Singularity definition files are in the repo for users to build (note: if you are using a Mac, you will need a VM for Singularity).
 
