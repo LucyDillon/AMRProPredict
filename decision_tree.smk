@@ -1,195 +1,212 @@
-singularity: "./ldillon_amrwebsite.sif"
+from pathlib import Path
 
-GENOMES, = glob_wildcards("static/files/{genome}.fna")
+GENOME = config.get("genome", "sample")
+DIAMOND_DB = config.get("diamond_db")
+EGGNOG_DB = config.get("eggnog_db")
+EGGNOG_DATA_DIR = config.get("eggnog_data_dir", "./")
+EGGNOG_2_ARFF = config.get("eggnog_2_arff")
+TOOL_DIR = config.get("tool_dir", "./")
+MODEL_FILES_DIR = config.get("model_files_dir", TOOL_DIR + "/model_files")
+ANTIBIOTICS = [
+    "amikacin", "amoxicillin", "ampicillin", "aztreonam", "cefepime", "ceftriaxone",
+    "chloramphenicol", "ciprofloxacin", "clindamycin", "colistin", "doripenem",
+    "ertapenem", "erythromycin", "fosfomycin", "gentamicin", "imipenem", "levofloxacin",
+    "meropenem", "moxifloxacin", "nitrofurantoin", "tetracycline", "tigecycline", "tobramycin"
+]
 
 rule all:
     input:
-        expand("static/files/results/{genome}.tar.gz", genome=GENOMES)
+        f"{GENOME}_results.tar.gz"
 
-
-rule prodigal:
+rule preprocess:
     input:
-        "static/files/{genome}.fna"
+        fasta = f"{GENOME}.fna"
     output:
-        "static/files/decision_tree/{genome}.faa"
+        faa = f"{GENOME}.faa"
     singularity:
-        "ldillon_amrwebsite.sif"
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
-        '''
-        prodigal -i {input} -a {output} -f gff
-        '''
+        """
+        prodigal -i {input.fasta} -a {output.faa} -f gff
+        """
 
 rule diamond:
     input:
-        faa="static/files/decision_tree/{genome}.faa",
-        db="data/eggnog_proteins.dmnd"
+        faa = f"{GENOME}.faa",
+        db = DIAMOND_DB
     output:
-        "static/files/decision_tree/{genome}_Diamond.faa"
+        diamond = f"{GENOME}_Diamond.tsv"
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
+    resources:
+        mem_mb = 8000
+    threads: 1
     shell:
-        '''
-        diamond blastp -d {input.db} -q {input.faa} --more-sensitive --threads 8 -e 0.001000 -o {output} --top 3 --query-cover 0 --subject-cover 0
-        '''
+        """
+        diamond blastp \
+            --db {input.db} \
+            --query {input.faa} \
+            --out {output.diamond} \
+            --outfmt 6 \
+            --threads {threads}
+        """
 
-rule Edit_diamond:
+rule edit_diamond:
     input:
-        "static/files/decision_tree/{genome}_Diamond.faa"
+        f"{GENOME}_Diamond.tsv"
     output:
-        "static/files/decision_tree/{genome}_DiamondReduced.faa"
-    run:
-        shell("""cat {input} | awk 'BEGIN{{prev = ""}};{{if ($1 != prev) {{ prev=$1; print $1"\t"$2"\t"$11"\t"$12 }} }}' > {output}""")
-
+        f"{GENOME}_DiamondReduced.tsv"
+    shell:
+        """
+        awk 'BEGIN{{prev = ""}} {{if ($1 != prev) {{ prev=$1; print $1"\\t"$2"\\t"$11"\\t"$12 }}}}' {input} > {output}
+        """
 
 rule eggnog:
     input:
-        faa="static/files/decision_tree/{genome}_DiamondReduced.faa",
-        db="data/"
+        faa = f"{GENOME}_DiamondReduced.tsv"
     output:
-        "static/files/decision_tree/{genome}.emapper.annotations"
+        f"{GENOME}.emapper.annotations"
     params:
-        prefix="{genome}"
+        prefix = GENOME,
+        data_dir = EGGNOG_DATA_DIR
+    resources:
+        mem_mb = 6000
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
         """
-        emapper.py --data_dir {input.db} --annotate_hits_table {input.faa}  --no_file_comments --override --output {params.prefix} --cpu 8;
-        mv {params.prefix}.emapper.annotations static/files/decision_tree/
+        emapper.py --data_dir {params.data_dir} \
+                   --annotate_hits_table {input.faa} \
+                   --no_file_comments \
+                   --override \
+                   --output {params.prefix}
         """
 
 rule eggnog_2_arff:
     input:
-        "static/files/decision_tree/{genome}.emapper.annotations"
+        annotations = f"{GENOME}.emapper.annotations",
+        script = EGGNOG_2_ARFF
     output:
-        "static/files/decision_tree/{genome}.arff"
+        f"{GENOME}.arff"
     shell:
         """
-        python eggnog_output_to_arff.py -file {input} -o {output} -c_attr_name phenotype -catagory1 Susceptible -catagory2 Resistant
+        python {input.script} -file {input.annotations} -o {output}
         """
 
 rule genome_names:
     input:
-        "static/files/{genome}.fna"
+        f"{GENOME}.fna"
     output:
-        temp("static/files/decision_tree/{genome}_names.txt")
-    run:
-        shell("""ls {input} > {output}; echo >> {output}""")
-
-rule run_c_program:
-    input:
-        dot_ami="dot_files/amikacin_EGGNOG_NEW.arff.dot",
-        dot_amo="dot_files/amoxicillin_EGGNOG_NEW.arff.dot",
-        dot_amp="dot_files/ampicillin_EGGNOG_NEW.arff.dot",
-        dot_az="dot_files/aztreonam_EGGNOG_NEW.arff.dot",
-        dot_cip="dot_files/ciprofloxacin_EGGNOG_NEW.arff.dot",
-        dot_clin="dot_files/clindamycin_EGGNOG_NEW.arff.dot",
-        dot_col="dot_files/colistin_EGGNOG_NEW.arff.dot",
-        dot_dor="dot_files/doripenem_EGGNOG_NEW.arff.dot",
-        dot_ert="dot_files/ertapenem_EGGNOG_NEW.arff.dot",
-        dot_gen="dot_files/gentamicin_EGGNOG_NEW.arff.dot",
-        dot_mer="dot_files/meropenem_EGGNOG_NEW.arff.dot",
-        dot_nit="dot_files/nitrofurantoin_EGGNOG_NEW.arff.dot",
-        dot_tet="dot_files/tetracycline_EGGNOG_NEW.arff.dot",
-        dot_tig="dot_files/tigecycline_EGGNOG_NEW.arff.dot",
-        dot_tob="dot_files/tobramycin_EGGNOG_NEW.arff.dot",
-        genome_names="static/files/decision_tree/{genome}_names.txt",
-        arff_file="static/files/decision_tree/{genome}.arff",
-    output:
-        paths=temp("static/files/decision_tree/{genome}_names.txt.paths.txt"),
-        predictions=temp("static/files/decision_tree/{genome}_names.txt.predicitions.txt"),
-        predictions_ami=temp("static/files/decision_tree/{genome}_ami.txt.predicitions.txt"),
-	predictions_amo=temp("static/files/decision_tree/{genome}_amo.txt.predicitions.txt"),
-	predictions_amp=temp("static/files/decision_tree/{genome}_amp.txt.predicitions.txt"),
-        predictions_az=temp("static/files/decision_tree/{genome}_az.txt.predicitions.txt"),
-	predictions_cip=temp("static/files/decision_tree/{genome}_cip.txt.predicitions.txt"),
-	predictions_clin=temp("static/files/decision_tree/{genome}_clin.txt.predicitions.txt"),
-        predictions_col=temp("static/files/decision_tree/{genome}_col.txt.predicitions.txt"),
-        predictions_dor=temp("static/files/decision_tree/{genome}_dor.txt.predicitions.txt"),
-        predictions_ert=temp("static/files/decision_tree/{genome}_ert.txt.predicitions.txt"),
-        predictions_gen=temp("static/files/decision_tree/{genome}_gen.txt.predicitions.txt"),
-        predictions_mer=temp("static/files/decision_tree/{genome}_mer.txt.predicitions.txt"),
-	predictions_nit=temp("static/files/decision_tree/{genome}_nit.txt.predicitions.txt"),
-        predictions_tet=temp("static/files/decision_tree/{genome}_tet.txt.predicitions.txt"),
-        predictions_tig=temp("static/files/decision_tree/{genome}_tig.txt.predicitions.txt"),
-        predictions_tob=temp("static/files/decision_tree/{genome}_tob.txt.predicitions.txt"),
+        f"{GENOME}_names.txt"
     shell:
         """
-        my_apply_decision_tree {input.dot_ami} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_ami};
-        my_apply_decision_tree {input.dot_amo} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_amo};
-        my_apply_decision_tree {input.dot_amp} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_amp};
-        my_apply_decision_tree {input.dot_az} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_az};
-        my_apply_decision_tree {input.dot_cip} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_cip};
-        my_apply_decision_tree {input.dot_clin} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_clin};
-        my_apply_decision_tree {input.dot_col} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_col};
-        my_apply_decision_tree {input.dot_dor} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_dor};
-        my_apply_decision_tree {input.dot_ert} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_ert};
-        my_apply_decision_tree {input.dot_gen} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_gen};
-        my_apply_decision_tree {input.dot_mer} {input.arff_file} {input.genome_names};
-        tail -1  {output.predictions} > {output.predictions_mer};
-        my_apply_decision_tree {input.dot_nit} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_nit};
-        my_apply_decision_tree {input.dot_tet} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_tet};
-        my_apply_decision_tree {input.dot_tig} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_tig};
-        my_apply_decision_tree {input.dot_tob} {input.arff_file} {input.genome_names};
-        tail -1 {output.predictions} > {output.predictions_tob}
+        ls {input} > {output}
+        echo >> {output}
         """
 
-
-rule combine_files:
+rule run_decision_tree:
     input:
-        predictions_ami="static/files/decision_tree/{genome}_ami.txt.predicitions.txt",
-	predictions_amo="static/files/decision_tree/{genome}_amo.txt.predicitions.txt",
-	predictions_amp="static/files/decision_tree/{genome}_amp.txt.predicitions.txt",
-        predictions_az="static/files/decision_tree/{genome}_az.txt.predicitions.txt",
-        predictions_cip="static/files/decision_tree/{genome}_cip.txt.predicitions.txt",
-	predictions_clin="static/files/decision_tree/{genome}_clin.txt.predicitions.txt",
-        predictions_col="static/files/decision_tree/{genome}_col.txt.predicitions.txt",
-        predictions_dor="static/files/decision_tree/{genome}_dor.txt.predicitions.txt",
-        predictions_ert="static/files/decision_tree/{genome}_ert.txt.predicitions.txt",
-        predictions_gen="static/files/decision_tree/{genome}_gen.txt.predicitions.txt",
-        predictions_mer="static/files/decision_tree/{genome}_mer.txt.predicitions.txt",
-	predictions_nit="static/files/decision_tree/{genome}_nit.txt.predicitions.txt",
-        predictions_tet="static/files/decision_tree/{genome}_tet.txt.predicitions.txt",
-        predictions_tig="static/files/decision_tree/{genome}_tig.txt.predicitions.txt",
-        predictions_tob="static/files/decision_tree/{genome}_tob.txt.predicitions.txt"
+        arff_file = f"{GENOME}.arff",
+        genome_names = f"{GENOME}_names.txt",
+        dot_file = lambda wildcards: f"{MODEL_FILES_DIR}/{wildcards.ab}_EGGNOG_NEW.arff.dot"
     output:
-        final="static/files/decision_tree/{genome}_FINAL.txt.predicitions.txt",
-    run:
-        shell("""echo "Antibiotic   Genome_name Genome_number   Node_number Node_label" > {output.final}; awk '{{print "Amikacin", $0}}' {input.predictions_ami} >> {output.final}; awk '{{print "Amoxicillin", $0}}' {input.predictions_amo} >> {output.final}; awk '{{print "Ampicillin", $0}}' {input.predictions_amp} >> {output.final}; awk '{{print "Aztreonam", $0}}' {input.predictions_az} >> {output.final}; awk '{{print "Ciprofloxacin", $0}}' {input.predictions_cip} >> {output.final}; awk '{{print "Clindamycin", $0}}' {input.predictions_clin} >> {output.final}; awk '{{print "Colistin", $0}}' {input.predictions_col} >> {output.final}; awk '{{print "Doripenem", $0}}' {input.predictions_dor} >> {output.final}; awk '{{print "Ertapenem", $0}}' {input.predictions_ert} >> {output.final}; awk '{{print "Gentamicin", $0}}' {input.predictions_gen} >> {output.final}; awk '{{print "Meropenem", $0}}' {input.predictions_mer} >> {output.final}; awk '{{print "Nitrofurantoin", $0}}' {input.predictions_nit} >> {output.final}; awk '{{print "Tetracycline", $0}}' {input.predictions_tet} >> {output.final}; awk '{{print "Tigecycline", $0}}' {input.predictions_tig} >> {output.final}; awk '{{print "Tobramycin", $0}}' {input.predictions_tob} >> {output.final}""")
-
-
-rule zip_files:
-    input:
-        "static/files/decision_tree/{genome}_Diamond.faa",
-	"static/files/decision_tree/{genome}_FINAL.txt.predicitions.txt",
-        "static/files/decision_tree/{genome}.arff",
-        "static/files/decision_tree/{genome}.emapper.annotations",
-        "static/files/decision_tree/{genome}_DiamondReduced.faa",
+        predictions = f"{GENOME}_{{ab}}.predictions.txt"
+    resources:
+        mem_mb = 4000
     params:
-        path="static/files/decision_tree"
-    output:
-        "static/files/{genome}.tar.gz"
+        ab = lambda wildcards: wildcards.ab
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
         """
-        tar -czvf {output} {input};
-        rm -r {params.path}
+        set -x
+        echo "Starting decision tree analysis for {params.ab}..."
+        echo "Dot file location: {input.dot_file}"
+
+        # Increase stack size for C programs
+        ulimit -s unlimited 2>/dev/null || ulimit -s 65536
+
+        # Check if dot file exists
+        if [ ! -f {input.dot_file} ]; then
+            echo "ERROR: Dot file not found: {input.dot_file}" >&2
+            exit 1
+        fi
+
+        # Copy to local file
+        cp {input.dot_file} ./model.dot
+
+        # Normalize line endings
+        sed -i 's/\r$//' ./model.dot 2>/dev/null || true
+
+        echo "Running apply_decision_tree..."
+        apply_decision_tree ./model.dot {input.arff_file} {input.genome_names}
+        exit_code=$?
+
+        echo "apply_decision_tree exit code: $exit_code"
+
+        # Handle output
+        if [ -f model.dot.predictions.txt ]; then
+            mv model.dot.predictions.txt {output.predictions}
+        elif [ -f {input.genome_names}.predictions.txt ]; then
+            mv {input.genome_names}.predictions.txt {output.predictions}
+        else
+            echo "ERROR: Could not find predictions output file" >&2
+            touch {output.predictions}
+            exit 1
+        fi
+
+        rm -f ./model.dot
+        exit $exit_code
         """
 
-
-rule send_results:
+rule make_signature:
     input:
-        file="static/files/{genome}.tar.gz"
+        fasta = f"{GENOME}.fna"
     output:
-        result="static/files/results/{genome}.tar.gz"
+        sig = f"{GENOME}.sig"
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
     shell:
         """
-        mv {input.file} {output.result}
+        sourmash sketch dna -p k=31 {input.fasta} -o {output.sig}
+        """
+
+rule sourmash_search:
+    input:
+        sig = f"{GENOME}.sig"
+    output:
+        expand(f"{GENOME}_{{ab}}.sm.txt", ab=ANTIBIOTICS)
+    params:
+        db_dir = config.get("original_model_files_dir", MODEL_FILES_DIR),
+        antibiotics = ANTIBIOTICS
+    singularity:
+        "/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif"
+    shell:
+        r"""
+        for ab in {params.antibiotics}; do
+            db="{params.db_dir}/${{ab}}_training.sbt.zip"
+            out="{GENOME}_${{ab}}.sm.txt"
+            echo "Running sourmash search for $ab using $db"
+
+            if [ -f "$db" ]; then
+                sourmash search {input.sig} "$db" --threshold 0.0 > "$out" 2>&1 || \
+                echo "Search failed" > "$out"
+            else
+                echo "Database not found: $db" > "$out"
+            fi
+        done
+        """
+
+rule package_results:
+    input:
+        arff = f"{GENOME}.arff",
+        genome_names = f"{GENOME}_names.txt",
+        predictions = expand(f"{GENOME}_{{ab}}.predictions.txt", ab=ANTIBIOTICS),
+        sourmash = expand(f"{GENOME}_{{ab}}.sm.txt", ab=ANTIBIOTICS),
+        eggnog = f"{GENOME}.emapper.annotations"
+    output:
+        archive = f"{GENOME}_results.tar.gz"
+    shell:
+        """
+        tar -czf {output.archive} {input}
         """
