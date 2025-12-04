@@ -44,8 +44,10 @@ Singularity definition files are in the repo for users to build (note: if you ar
 
 Due to large file sizes of the Sourmash DBs, please download the files from the following link on the Open Science Framework:
 https://osf.io/qv3fs/overview?view_only=181294b8e47e4fd780e3b292158c8b43
+Put these sourmash files into the same folder as the model files "data".
 
 Download eggNOG DBs from: http://eggnog5.embl.de/download/emapperdb-5.0.2/
+Put these files inside the AMRcast directory.
 
 ## Extra
 I would advise checking the sourmash output file to ensure the genome is sufficiently similar to the training data to make an accurate prediction. \
