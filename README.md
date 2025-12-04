@@ -34,6 +34,7 @@ Download eggNOG DBs using the instructions on their GitHub: https://github.com/e
 
 ## Extra
 I would advise checking the sourmash output file to ensure the genome is sufficiently similar to the training data to make an accurate prediction. \
+Size of repo ~240MB (not including the extra downloads) \
 If you have any ideas to improve, please report a suggestion.
 
 
