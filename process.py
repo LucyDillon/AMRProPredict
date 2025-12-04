@@ -98,15 +98,15 @@ def create_minimal_config(work_dir, input_basename, tool_dir, model_type):
     singularity_dir.mkdir(exist_ok=True)
 
     container_sources = {
-        'container': tool_path / 'ldillon_amrwebsite_amrmlpipeline_3_arm64.sif',
-        'ml_container': tool_path / 'lucyd_machinelearning_mlpackages.sif'
+        'container': tool_path / 'amrmlpipeline_DT_arm64.sif',
+        'ml_container': tool_path / 'amrmlpipeline_CNN.sif'
     }
     
     # Also check in parent directory
     if not container_sources['container'].exists():
-        container_sources['container'] = Path('/home/lucydillon.linux/ldillon_amrwebsite_amrmlpipeline_3_arm64.sif')
+        container_sources['container'] = Path('/__YOUR__PATH___/amrmlpipeline_DT_arm64.sif')
     if not container_sources['ml_container'].exists():
-        container_sources['ml_container'] = Path('/home/lucydillon.linux/lucyd_machinelearning_mlpackages.sif')
+        container_sources['ml_container'] = Path('/__YOUR__PATH___/amrmlpipeline_CNN.sif')
 
     singularity_copies = {}
     for name, src in container_sources.items():
