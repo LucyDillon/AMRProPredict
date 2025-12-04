@@ -34,8 +34,8 @@ def find_file(tool_dir, filename):
     tool_path = Path(tool_dir)
     if (tool_path / filename).exists():
         return str(tool_path / filename)
-    if (tool_path / 'model_files' / filename).exists():
-        return str(tool_path / 'model_files' / filename)
+    if (tool_path / 'data' / filename).exists():
+        return str(tool_path / 'data' / filename)
     return None
 
 def create_minimal_config(work_dir, input_basename, tool_dir, model_type):
@@ -65,7 +65,7 @@ def create_minimal_config(work_dir, input_basename, tool_dir, model_type):
             scripts_to_copy[script_name] = str(tool_path / script_name)
 
     # Copy model files to working directory
-    model_files_dir = tool_path / 'model_files'
+    model_files_dir = tool_path / 'data'
     model_files_copied = {}
     
     # Define which files to copy based on model type
