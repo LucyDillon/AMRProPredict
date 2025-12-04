@@ -1,0 +1,125 @@
+Bootstrap: docker
+From: continuumio/miniconda3
+
+%labels
+Maintainer Lucy Dillon ldillon05@qub.ac.uk
+Description Bioinformatics container with prodigal, diamond, eggnog-mapper, and custom tools
+Version 1.0
+
+%environment
+export PATH="/opt/conda/envs/biotools/bin:/opt/conda/bin:/usr/local/bin:$PATH"
+export CONDA_DEFAULT_ENV=biotools
+export CONDA_PREFIX="/opt/conda/envs/biotools"
+
+%post
+# Update system and install essential packages
+apt-get update && apt-get install -y \
+    wget \
+    git \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libncurses5-dev \
+    libcurl4-gnutls-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Update conda and set up channels
+/opt/conda/bin/conda update -n base -c defaults conda
+/opt/conda/bin/conda config --add channels defaults
+/opt/conda/bin/conda config --add channels bioconda
+/opt/conda/bin/conda config --add channels conda-forge
+/opt/conda/bin/conda config --set channel_priority strict
+
+# Create a conda environment for the tools
+/opt/conda/bin/conda create -n biotools python=3.9 -y
+
+# Activate the environment and install packages
+/opt/conda/bin/conda install -n biotools -c bioconda -c conda-forge \
+    prodigal \
+    diamond \
+    eggnog-mapper \
+    pandas \
+    -y
+
+# Install prodigal from apt as backup (it was working in your original)
+apt-get update && apt-get install -y prodigal
+
+# Clone and build the C programme
+cd /opt
+git clone https://github.com/ChrisCreevey/apply_decision_tree.git
+cd apply_decision_tree
+
+# Build the C programme (assuming it has a Makefile or simple compilation)
+# If there's a Makefile:
+if [ -f Makefile ]; then
+    make
+# If no Makefile, try simple compilation:
+elif [ -f *.c ]; then
+    gcc -o apply_decision_tree *.c
+fi
+
+# Make sure it's executable and in PATH
+chmod +x apply_decision_tree 2>/dev/null || true
+cp apply_decision_tree /usr/local/bin/ 2>/dev/null || true
+
+# Clean up
+/opt/conda/bin/conda clean --all -y
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+%runscript
+#!/bin/bash
+# Set conda environment paths
+export PATH="/opt/conda/envs/biotools/bin:/opt/conda/bin:$PATH"
+export CONDA_DEFAULT_ENV=biotools
+export CONDA_PREFIX="/opt/conda/envs/biotools"
+exec "$@"
+
+%test
+# Test that all tools are accessible
+echo "Testing installed tools..."
+
+# Set up conda environment paths for testing
+export PATH="/opt/conda/envs/biotools/bin:/opt/conda/bin:$PATH"
+export CONDA_DEFAULT_ENV=biotools
+export CONDA_PREFIX="/opt/conda/envs/biotools"
+
+# Test prodigal
+prodigal -h > /dev/null 2>&1 && echo "✓ prodigal OK" || echo "✗ prodigal FAILED"
+
+# Test diamond
+diamond help > /dev/null 2>&1 && echo "✓ diamond OK" || echo "✗ diamond FAILED"
+
+# Test eggnog-mapper
+emapper.py -h > /dev/null 2>&1 && echo "✓ eggnog-mapper OK" || echo "✗ eggnog-mapper FAILED"
+
+# Test python packages
+/opt/conda/envs/biotools/bin/python -c "import pandas; import argparse; print('✓ Python packages OK')" || echo "✗ Python packages FAILED"
+
+# Test custom C programme
+apply_decision_tree > /dev/null 2>&1 && echo "✓ apply_decision_tree OK" || echo "✗ apply_decision_tree not found"
+
+echo "All tests completed!"
+
+%help
+This container includes:
+- prodigal: Gene prediction tool
+- diamond: Sequence aligner
+- eggnog-mapper: Functional annotation tool
+- pandas & argparse: Python libraries
+- apply_decision_tree: Custom C programme from ChrisCreevey
+
+Usage examples:
+  singularity exec container.sif prodigal -h
+  singularity exec container.sif diamond help
+  singularity exec container.sif emapper.py -h
+  singularity exec container.sif python your_script.py
+  singularity exec container.sif apply_decision_tree
+
+To get an interactive shell:
+  singularity shell container.sif
