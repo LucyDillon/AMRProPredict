@@ -1,17 +1,14 @@
-# AMRProPredict
-Command line workflow to predict AMR phenotype
+# AMRcast 
+## WARNING! This work is still under development 
+Command line workflow to predict AMR phenotype.
+I would advise checking the sourmash output file to ensure the genome is sufficiently similar to the training data to make an accurate prediction.
 
-Two containers were needed due to memory-building restrictions on sylabs- we are working to integrate this into a single docker or singularity container.
+Due to file sizes of the Sourmash DBs for each model, please download the files from the following link on the Open Science Framework:
+https://osf.io/qv3fs/overview?view_only=181294b8e47e4fd780e3b292158c8b43
 
-To pull the singularity image used in the decision tree smk:
-```
-singularity pull --arch amd64 library://ldillon/amrwebsite/amrmlpipeline:6
-```
-To pull the singularity image used in the CNN smk:
-```
-singularity pull --arch amd64 library://lucyd/machinelearning/mlpackages:1
-```
+Download eggNOG DBs using the instructions on their GitHub: https://github.com/eggnogdb/eggnog-mapper/ 
 
-The eggNOG databases are required to run these workflows (please look at .smk files for the directory names). We are in the process of integrating a 'fast' option to allow users to use the eggNOG output (*.emapper.annotations).
+If you have any ideas to improve, please report a suggestion.
+
 
 
