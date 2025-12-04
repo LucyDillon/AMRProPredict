@@ -6,7 +6,7 @@ Command line workflow to predict AMR phenotype.
 ## Quick Start
 ```bash
 # Basic usage
-./run_analysis.sh --input genome.fasta --output results.tar.gz --model both_models
+bash run_analysis.sh --input genome.fasta --output results.tar.gz --model both_models
 
 # If you are using a VM on a Mac and this is causing writing permission errors, try:
 bash run_analysis.sh --input genome.fasta --output ~/results.tar.gz --model both_models
