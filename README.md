@@ -11,6 +11,8 @@ bash run_analysis.sh --input genome.fasta --output results.tar.gz --model both_m
 
 # If you are using a VM on a Mac and this is causing writing permission errors, try:
 bash run_analysis.sh --input genome.fasta --output ~/results.tar.gz --model both_models
+
+# You can use the test the genome in this repo (106654.148.fna) if you are having problems with your input file.
 ```
 
 ## Model Options
