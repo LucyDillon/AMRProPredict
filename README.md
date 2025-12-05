@@ -46,8 +46,9 @@ pip install pyyaml
 conda install -c bioconda -c conda-forge snakemake
 ```
 - Install Singularity \
-This is a bit more complicated depending on if you have Windows/linux/Mac. \
-You will most likely need a VM to run Singularity on a MAC :( 
+This is a bit more complicated depending on if you have Windows/Linux/Mac. \
+Please use the official documentation to install: https://docs.sylabs.io/guides/3.0/user-guide/installation.html# \
+Note - you will probably need a virtual machine if using a Windows or Mac :(
 
 Singularity definition files are in the repo for users to build (note: if you are using a Mac, you will need a VM for Singularity).
 
